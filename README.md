@@ -39,16 +39,15 @@ graph LR
 
 ## View
 > В данном модуле осуществляется отображение информации пользователю. 
-Представление может меняться в зависимости от полученных данных.
-
-Данный модуль должен иметь 2 интерфейса:
-  
+Классы модуля:
 ```mermaid
 classDiagram
 
   note for ErrorPresenter "Предоставить текст ошибки пользователю"
   note for CollectionPresenter "Предоставить пользователю отсортированную коллекцию
   Для доп задания 2 необходимо записывать результат в файл."
+  note for MatchesPresenter "Предоставить количество совпадений 
+  пользователю по доп заданию 4"
 
   class ErrorPresenter {
     +sendError(String header, String messageText)
@@ -57,6 +56,10 @@ classDiagram
   class CollectionPresenter {
     +sendCollection(EntityCollection collection)
   }
+
+  class MatchesPresenter {
+    +sendMatches(int matches)
+  }
 ```
 
 ## Controller
@@ -64,39 +67,138 @@ classDiagram
 Будь то ввод с клавиатуры, чтение файла и т.д.
 Данный модуль отвечает за целостность данных, которые попадают в модель.
 
+### FileReader
+> В данном модуле осуществляется чтение данных из файлов.
 
-Данный модуль должен иметь реализации интерфейсов:
+__Эндпоинты данного подмодуля:__
+- FileReader
+
+__FileReader__ 
+Построчно читает файл. В зависимости от типа данных,
+которые нужно прочитать, он использует соответствующий EntityRowReader.
+
+__EntityRowReader__
+Каждая реализация должна конвертировать строку в экземпляр класса через соответсвующий билдер.
+
+Классы подмлуля:
 ```mermaid
 classDiagram
+  EntityRowReader~T extends Entity~ <|.. UserReader
+  EntityRowReader~T extends Entity~ <|.. BusReader
+  EntityRowReader~T extends Entity~ <|.. CarReader
+  FileReader~T extends Entity~ --* EntityRowReader~T extends Entity~
 
-  class EntityReader {
-    +EntityCollection readEntities()
+  class FileReader~T extends Entity~{
+    +EntityRowReader~T~ rowReader
+    
+    EntityCollection read(String path)
   }
+
+  class EntityRowReader~T extends Entity~{
+    <<interface>>
+    T readRow(String row)
+  }
+
+  class UserReader{
+    +UserBuilder builder
+
+    User readRow(String row)
+  }
+
+  class BusReader{
+    +BusBuilder builder
+
+    Bus readRow(String row)
+  }
+
+  class CarReader{
+    +CarBuilder builder
+
+    Car readRow(String row)
+  }
+
 ```
 
 ## Model
-> В данном модуле осуществляется непосредственно сортировка.
+> В данном модуле осуществляется взаимодействие с данными.
 Основная логика, которая должна выполняться эффективно.
-Модель получает проверенные данные.
 
-___Важно!___ 
-Сортировка должна быть реализована по всем полям.
+__Эндпоинты данного модуля:__
+- класс SorterBuilder
+- класс EntitySorter
+- класс EntityFinder
 
-Можно реализовать комплексную или выборочную сортировку, дополнительное API нужно будет согласовать с исполнителем контроллера.
+__Инициализация наследника EntitySorter должна проводиться только через билдер.__
+Билдер необходим, так как алгоритм сортировки должен быть один, а способов сравнения 2.
+Задача билдера - подставить нужный EntityComporator в EntitySorter.
 
-Данный модуль должен содержать класс:
+__EntitiFinder__
+Должен найти все повторения Entity в коллекции. Использует исключительно DefaultComporator.
 
-Так же данный модуль должен содержать реализацию интерфейсов:
+__DefaultComporator__
+Он просто вызывает compareTo() у Entity.
+
+__AlternativeComporator__
+Должен выполнять условия доп задания 1.
+
+По окончанию сортировки
+
+Классы модуля:
 ```mermaid
 classDiagram
 
-  note for UserSorter "Должно быть реализовано 2 сортировки:
-  -Обычная, использующая Entity.compareTo()
-  -Альтернативная, выполняющая условие доп задания 1.
-  Для этого разрешено использовать компоратор."
+  EntityComporator <|.. DefaultComporator
+  EntityComporator <|.. AlternativeComporator
+  EntityFinder <|.. DefaultEntityFinder
+  EntitySorter *-- EntityComporator
+  DefaultEntityFinder *-- DefaultComporator
+  SorterBuilder --> EntityComporator
+  SorterBuilder --> EntitySorter
+  EntitySorter --> XXXSorter
 
-  class UserSorter{
-    +EntityCollection sortEntities(UserCollection users)
+  class EntityFinder{
+    <<abstract>>
+
+    int findEntity(EntityCollection collection, Entity target)
+  }
+
+  class DefaultEntityFinder{
+    <<abstract>>
+    + DefaultEntityComporator comporator
+
+    int findEntity(EntityCollection collection, Entity target)
+  }
+
+  class EntitySorter{
+    <<abstract>>
+    +EntityComporator сomporator;
+    +CollectionPresenter presenter;
+
+    EntityCollection sortEntities(EntityCollection collection)
+  }
+
+
+  note for XXXSorter "Конкретная реализация алгоритма сортировки.
+  Название зависит от выбранного алгоритма."
+  class XXXSorter{
+    EntityCollection sortEntities(EntityCollection collection)
+  }
+
+  class SorterBuilder{
+    setDefaultComporator()
+    setAlternativeComporatot()
+    EntitySorter build()
+  }
+
+  class EntityComporator{
+    <<interface>>
+    int compare(Entity first, Entity second)
+  }
+  class DefaultComporator{
+    int compare(Entity first, Entity second)
+  }
+  class AlternativeComporator{
+    int compare(Entity first, Entity second)
   }
 ```
 
@@ -105,6 +207,10 @@ classDiagram
 
 ### Entities
 > В этом подмодуле представлены сущности приложения.
+
+Экземпляры Entity должны быть инициализированы исключительно через соответствующий Builder.
+Абстрактный класс Entity должен реализовать Comparable\<Entity>. В нем сравнивается название типа.
+Каждый наследник Entity должен переопределить реализацию Comparable\<Entity>. В нем вызвать базовую реализацию метода compareTo, в случае если она вернула 0, произвести сравнение по всем полям.
 
 Этот модуль должен содержать классы:
 ```mermaid
@@ -116,15 +222,31 @@ title: Исходя из общих требований,
 ---
 classDiagram
 
-  note for Entity "Абстрактный класс, 
-  который должен реализовать 
-  сравнение объектов разных типов,
-   а так же предоставить абстракцию
-    для сравнения объектов одного типа."
+  Entity <|.. Bus
+  Entity <|.. User
+  Entity <|.. Car
+
+  Bus --> BusBuilder
+  User --> UserBuilder
+  Car --> CarBuilder
+  
+  EntityCollection --> EntityCollectionFactory
 
   class Entity {
+    <<abstarct>>
     int compareTo(Entity other)
   }
+
+  class EntityCollection{
+    Iterable~Entity~ getEntities()
+    List~Entity~ getEntitiesList()
+  }
+
+  class EntityCollectionFactory{
+    EntityCollection createEntityCollection(List<Entity> entities);
+  }
+
+  class EntityCollectionFactory
 
   class Bus {
     +int number
@@ -133,7 +255,14 @@ classDiagram
 
     int getNumber()
     String getModel()
-    int getMildage()
+    int getMilage()
+  }
+
+  class BusBuilder{
+    setNumber(int number)
+    setModel(string model)
+    setMileage(int mileage)
+    Bus build()
   }
 
   class User {
@@ -148,6 +277,14 @@ classDiagram
     int getAge()
   }
 
+  class UserBuilder{
+    setName(String name)
+    setPassword(String password)
+    setEmail(String Email)
+    setAge(int age)
+    User build()
+  }
+
   class Car{
     +int enginePower
     +String model
@@ -157,42 +294,57 @@ classDiagram
     String getModel()
     LocalDate getReleaseDate()
   }
-```
 
-Этот модуль должен содержать реализации интерфейсов:
-```mermaid
-classDiagram
-
-  note for EntityBuilder "Для каждого наследника Entity должна быть своя реализация билдера."
-
-  class EntityBuilder{
-    Entity build()
+  class CarBuilder{
+    setEnginePower(int enginePower)
+    setModel(string model)
+    setReleaseDate(int releaseDate)
+    Car build()
   }
-  
-  note for EntityCollection "Звездочка для доп задания 3
-  Так же необходимо соблюсти иммутабельность 
-  коллекции в методе getEntitiesList()
-  Реализация должна поддерживать generic."
-
-  class EntityCollection{
-    +Iterable~Entity~ getEntities()
-    +List~Entity~ getEntitiesList()
-  }
-
 ```
 
 ### Logging
 > Этот подмодуль отвечает за логирование приложения.
 
-Данный подмодуль должен содержать реализации-декораторы интерфейса Logger и основную реализацию этого интерфейса, которая должна записывать логи в файл.
+__Каждый модуль с помощью DI будет получать соответствующий ModuleLoggerDecorator__
+Задача декоратора - добавить к логу, которую он получает от модуля, название модуля.
+
+Эта спорная часть архитектуры. Требуется обсуждение с исполнителем.
+
+Классы подмодуля:
 ```mermaid
 classDiagram
 
+  Logger <|.. ModuleLoggerDecorator
+  Logger <|.. FileLogger
+
+  ModuleLoggerDecorator --> FileLogger
+
+  Logger --> Level
+  FileLogger --> Level
+  ModuleLoggerDecorator --> Level
+
   class Logger{
-    logInfo(String log)
-    logWarning(String log)
-    logFatal(String log)
+    <<interface>>
+    log(Level level, String log)
   }
+
+  class Level{
+
+    String toString()
+  }
+
+  class ModuleLoggerDecorator{
+    +Logger logger
+    +String modulaName
+
+    log(Level level, String log)
+  }
+
+  class FileLogger{
+    log(Level level, String log)
+  }
+
 ```
 Каждый лог должен быть в следующем формате:
 `[Уровень серьезности][Модуль] Сообщение`
